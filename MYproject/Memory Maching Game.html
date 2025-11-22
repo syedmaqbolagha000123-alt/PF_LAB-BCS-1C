@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Pro Memory Match</title>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<style>
+:root{
+  --bg:#0f1724;
+  --card-bg:#0ea5a1;
+  --card-back:#1e293b;
+  --panel:#0b1220;
+  --accent:#06b6d4;
+  --glass: rgba(255,255,255,0.05);
+  --text:#e6eef6;
+  --success: #22c55e;
+  --error: #ef4444;
+}
+body{margin:0; font-family: "Inter", system-ui, sans-serif;
+  background: radial-gradient(circle at 15% 50%, rgba(6,182,212,0.08), transparent 25%),
+              radial-gradient(circle at 85% 30%, rgba(124,58,237,0.08), transparent 25%),
+              linear-gradient(180deg,#0f1724 0%, #020617 100%);
+  color:var(--text); display:flex; align-items:center; justify-content:center; min-height:100vh; padding:20px;
+  user-select: none; -webkit-user-select: none;
+}
+body.light-mode{
+  --bg: #f8fafc;
+  --card-bg: #06b6d4;
+  --card-back: #ffffff;
+  --panel: #e2e8f0;
+  --accent: #0284c7;
+  --glass: rgba(0,0,0,0.05);
+  --text: #0f1724;
+  background: #f1f5f9;
+}
+
+/* Layout */
+.app {
+  width:100%; max-width:1000px; display:grid; gap:20px;
+  grid-template-columns: 300px 1fr; align-items:start;
+}
+
+/* Sidebar Panel */
+.panel { 
+  background: var(--glass); 
+  backdrop-filter: blur(10px);
+  padding:20px; border-radius:16px; 
+  border: 1px solid rgba(255,255,255,0.05);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.2);
+}
+.brand{display:flex;align-items:center;gap:12px;margin-bottom:20px}
+.brand .logo{
+  width:48px;height:48px;border-radius:12px;
+  background:linear-gradient(135deg,var(--accent),#7c3aed);
+  display:flex;align-items:center;justify-content:center;
+  font-weight:800; font-size:20px; color:white;
+  box-shadow: 0 0 15px rgba(6,182,212,0.3);
+}
+h1{font-size:20px;margin:0; letter-spacing:-0.5px}
+.lead{margin:4px 0 0;color:#94a3b8;font-size:13px}
+
+/* Controls */
+.btn {
+  background:var(--accent); color:white; border:none; padding:10px 16px; border-radius:10px; 
+  cursor:pointer; font-weight:600; transition: all 0.2s; width:100%; margin-bottom:8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.btn:hover { transform:translateY(-2px); filter:brightness(1.1); }
+.btn:active { transform:translateY(0); }
+.btn.ghost{background:transparent;border:1px solid rgba(255,255,255,0.1); color:var(--text); box-shadow:none}
+.btn.ghost:hover{background:rgba(255,255,255,0.05)}
+
+.difficulty-selector { display:flex; gap:6px; background:rgba(0,0,0,0.2); padding:4px; border-radius:10px; margin:16px 0; }
+.dif-opt { 
+  flex:1; text-align:center; padding:8px; font-size:12px; border-radius:8px; cursor:pointer; color:#94a3b8; transition:all 0.2s;
+}
+.dif-opt.active { background:var(--glass); color:white; font-weight:bold; box-shadow:0 2px 8px rgba(0,0,0,0.1); }
+
+/* Stats */
+.stats-box { background:rgba(0,0,0,0.2); border-radius:12px; padding:16px; margin-top:20px; }
+.stat-row { display:flex; justify-content:space-between; margin-bottom:8px; font-size:14px; }
+.stat-row span:first-child { color:#94a3b8; }
+.best-score { margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1); font-size:13px; color:var(--accent); text-align:center; }
+
+/* Game Area */
+.game-container {
+  background: var(--glass); border-radius:16px; padding:24px; min-height:500px;
+  display:flex; flex-direction:column; border: 1px solid rgba(255,255,255,0.05);
+  position:relative;
+}
+
+.top-bar { display:flex; justify-content:space-between; margin-bottom:20px; align-items:center; }
+.status-pill { 
+  padding:6px 12px; background:rgba(6,182,212,0.15); color:var(--accent); 
+  border-radius:20px; font-size:13px; font-weight:600; border:1px solid rgba(6,182,212,0.2);
+}
+
+.grid {
+  display:grid; gap:12px; margin:0 auto; perspective:1000px;
+}
+
+/* CARDS */
+.card { 
+  width:90px; height:90px; cursor:pointer; position:relative;
+  /* No transition here on the container, strictly on inner */
+}
+.card-inner {
+  width:100%; height:100%; position:relative; transform-style:preserve-3d; 
+  transition:transform 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275); /* Bouncy flip */
+  border-radius:12px; 
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+}
+
+/* Hover Effect: Lift up */
+.card:hover .card-inner { box-shadow: 0 10px 20px rgba(0,0,0,0.4); transform: translateY(-4px); }
+.card.flip:hover .card-inner { transform: rotateY(180deg) translateY(-4px); }
+
+/* Flip States */
+.card.flip .card-inner { transform:rotateY(180deg); }
+.card.peek .card-inner { transform:rotateY(180deg); } /* Used for initial peek */
+
+.face { 
+  position:absolute; inset:0; border-radius:12px; backface-visibility:hidden; 
+  display:flex; align-items:center; justify-content:center; font-size:36px;
+  border: 1px solid rgba(255,255,255,0.05);
+}
+.front { 
+  background: linear-gradient(135deg, var(--card-bg), #0891b2); 
+  transform:rotateY(0deg); 
+  /* Note: In this CSS logic, "Front" is actually the back of the card (Logo side) 
+     and "Back" is the emoji side, because we rotate 180 to show content */
+}
+.back { 
+  background: linear-gradient(135deg, #ffffff, #f1f5f9); 
+  color: #0f1724; transform:rotateY(180deg); 
+}
+
+/* Matched State */
+.card.matched .back { background: linear-gradient(135deg, #22c55e, #16a34a); color:white; box-shadow:0 0 15px rgba(34,197,94,0.4); }
+.card.matched .card-inner { animation: pulse 0.5s; }
+
+/* Error Shake */
+.card.shake .card-inner { animation: shake 0.4s ease-in-out; border: 2px solid var(--error); }
+@keyframes shake {
+  0%, 100% { transform: rotateY(180deg) translateX(0); }
+  20% { transform: rotateY(180deg) translateX(-6px); }
+  40% { transform: rotateY(180deg) translateX(6px); }
+  60% { transform: rotateY(180deg) translateX(-3px); }
+  80% { transform: rotateY(180deg) translateX(3px); }
+}
+
+/* Pulse Match */
+@keyframes pulse { 0%{transform:rotateY(180deg) scale(1);} 50%{transform:rotateY(180deg) scale(1.1);} 100%{transform:rotateY(180deg) scale(1);} }
+
+/* Combo Text Float */
+.combo-text {
+  position:absolute; font-weight:900; color:#fbbf24; font-size:24px;
+  pointer-events:none; animation: floatUp 1s forwards; text-shadow:0 2px 4px rgba(0,0,0,0.5);
+  z-index:10;
+}
+@keyframes floatUp { 0%{opacity:1; transform:translateY(0) scale(1);} 100%{opacity:0; transform:translateY(-40px) scale(1.5);} }
+
+/* Mobile */
+@media (max-width:800px){
+  .app { grid-template-columns: 1fr; }
+  .panel { order:2; }
+  .game-container { order:1; min-height:auto;}
+  .card { width: 60px; height:60px; }
+  .face { font-size:28px; }
+}
+
+/* Modal */
+.modal {
+  position:fixed; inset:0; background:rgba(0,0,0,0.8); 
+  display:flex; justify-content:center; align-items:center; 
+  opacity:0; visibility:hidden; transition:0.3s; z-index:999; backdrop-filter:blur(4px);
+}
+.modal.show { opacity:1; visibility:visible; }
+.modal-content {
+  background: #1e293b; border:1px solid rgba(255,255,255,0.1);
+  padding:32px; border-radius:20px; text-align:center; width:90%; max-width:400px;
+  transform:scale(0.8); transition:0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.modal.show .modal-content { transform:scale(1); }
+.stat-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; margin:20px 0; }
+.stat-item div:first-child { font-size:24px; font-weight:700; color:white; }
+.stat-item div:last-child { font-size:12px; color:#94a3b8; text-transform:uppercase; letter-spacing:1px; }
+
+</style>
+</head>
+<body>
+
+<div class="app">
+  <div class="panel">
+    <div class="brand">
+      <div class="logo">M</div>
+      <div>
+        <h1>Memory Pro</h1>
+        <p class="lead">Train your brain.</p>
+      </div>
+    </div>
+
+    <button class="btn" id="newGameBtn">New Game</button>
+    
+    <div class="difficulty-selector">
+      <div class="dif-opt" data-d="easy">Easy</div>
+      <div class="dif-opt active" data-d="medium">Medium</div>
+      <div class="dif-opt" data-d="hard">Hard</div>
+    </div>
+
+    <div class="stats-box">
+      <div class="stat-row"><span>Time</span> <span id="timeDisplay" style="font-family:monospace; font-size:16px">00:00</span></div>
+      <div class="stat-row"><span>Moves</span> <span id="movesDisplay">0</span></div>
+      <div class="stat-row"><span>Accuracy</span> <span id="accDisplay">100%</span></div>
+      <div class="best-score" id="bestScoreDisplay">Best: --:--</div>
+    </div>
+
+    <div style="margin-top:20px; display:flex; gap:10px">
+      <button class="btn ghost" id="themeToggle">🌗 Theme</button>
+      <button class="btn ghost" id="muteBtn">🔊 Sound</button>
+    </div>
+  </div>
+
+  <div class="game-container">
+    <div class="top-bar">
+      <div class="status-pill" id="levelPill">Medium 4x4</div>
+      <div class="status-pill" id="statePill" style="background:rgba(255,255,255,0.1); color:var(--text)">Ready</div>
+    </div>
+    <div id="grid" class="grid"></div>
+    <div id="comboContainer" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); pointer-events:none;"></div>
+  </div>
+</div>
+
+<div id="winModal" class="modal">
+  <div class="modal-content">
+    <h2 style="margin:0 0 10px; font-size:28px">Victory! 🎉</h2>
+    <p style="color:#94a3b8; margin:0">Complete logic & focus.</p>
+    
+    <div class="stat-grid">
+      <div class="stat-item"><div id="winTime">00:00</div><div>Time</div></div>
+      <div class="stat-item"><div id="winMoves">0</div><div>Moves</div></div>
+      <div class="stat-item"><div id="winAcc">0%</div><div>Acc</div></div>
+    </div>
+
+    <button class="btn" id="playAgainBtn">Play Again</button>
+    <button class="btn ghost" onclick="document.getElementById('winModal').classList.remove('show')" style="margin-top:8px">Close</button>
+  </div>
+</div>
+
+<script>
+/**
+ * MEMORY MATCH PRO
+ * Features: Peek mechanic, Combo system, LocalStorage, Audio Engine, Particles
+ */
+
+// --- CONFIG ---
+const CONFIG = {
+  easy: { rows:3, cols:4, pairs:6, peekTime: 1500 },
+  medium: { rows:4, cols:4, pairs:8, peekTime: 2000 },
+  hard: { rows:5, cols:6, pairs:15, peekTime: 3000 } // 30 cards
+};
+
+const THEMES = [
+  ["🚀","🛸","🌌","🪐","👩‍🚀","🛰️","☄️","🔭","👽","🌑","🌍","☀️","🌠","🛰️","🌗"],
+  ["🦁","🐯","🐨","🐻","🐼","🦊","🐸","🐵","🐔","🐧","🦉","🐺","🐗","🦄","🐝"],
+  ["🍎","🍌","🍇","🍉","🍒","🍓","🍑","🍍","🥝","🥑","🍆","🥦","🌽","🥕","🍄"]
+];
+
+// --- STATE ---
+let currentDiff = 'medium';
+let cards = [];
+let firstCard = null;
+let secondCard = null;
+let lockBoard = false;
+let gameActive = false;
+let timerInt = null;
+let seconds = 0;
+let moves = 0;
+let matches = 0;
+let lastMatchTime = 0; // For combos
+let comboChain = 0;
+let muted = false;
+
+// --- DOM ---
+const grid = document.getElementById('grid');
+const timeDisplay = document.getElementById('timeDisplay');
+const movesDisplay = document.getElementById('movesDisplay');
+const accDisplay = document.getElementById('accDisplay');
+const bestScoreDisplay = document.getElementById('bestScoreDisplay');
+const levelPill = document.getElementById('levelPill');
+const statePill = document.getElementById('statePill');
+const comboContainer = document.getElementById('comboContainer');
+
+// --- AUDIO ENGINE ---
+const AudioContext = window.AudioContext || window.webkitAudioContext;
+let audioCtx = new AudioContext();
+
+function playSound(type) {
+  if(muted) return;
+  if(audioCtx.state === 'suspended') audioCtx.resume();
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+
+  const now = audioCtx.currentTime;
+  
+  if(type === 'flip') {
+    // Soft "thwip"
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(300, now);
+    osc.frequency.exponentialRampToValueAtTime(600, now + 0.1);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.15);
+    osc.start(now);
+    osc.stop(now + 0.2);
+  } else if (type === 'match') {
+    // High Ding
+    osc.type = 'sine';
+    osc.frequency.setValueAtTime(500, now);
+    osc.frequency.exponentialRampToValueAtTime(1000, now + 0.1);
+    gain.gain.setValueAtTime(0.2, now);
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.6);
+    osc.start(now);
+    osc.stop(now + 0.6);
+    // Add a harmony
+    const osc2 = audioCtx.createOscillator();
+    const gain2 = audioCtx.createGain();
+    osc2.connect(gain2);
+    gain2.connect(audioCtx.destination);
+    osc2.type='triangle';
+    osc2.frequency.setValueAtTime(880, now); // A5
+    gain2.gain.setValueAtTime(0.05, now);
+    gain2.gain.exponentialRampToValueAtTime(0.01, now+0.6);
+    osc2.start(now);
+    osc2.stop(now+0.6);
+  } else if (type === 'error') {
+    // Low Buzz
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(150, now);
+    osc.frequency.linearRampToValueAtTime(100, now + 0.2);
+    gain.gain.setValueAtTime(0.1, now);
+    gain.gain.linearRampToValueAtTime(0, now + 0.3);
+    osc.start(now);
+    osc.stop(now + 0.3);
+  } else if (type === 'win') {
+    // Arpeggio
+    [523.25, 659.25, 783.99, 1046.50].forEach((freq, i) => {
+       const o = audioCtx.createOscillator();
+       const g = audioCtx.createGain();
+       o.type = 'sine';
+       o.connect(g);
+       g.connect(audioCtx.destination);
+       o.frequency.value = freq;
+       g.gain.value = 0.1;
+       o.start(now + i*0.1);
+       g.gain.exponentialRampToValueAtTime(0.001, now + i*0.1 + 1);
+       o.stop(now + i*0.1 + 1);
+    });
+  }
+}
+
+// --- CORE LOGIC ---
+
+function initGame() {
+  clearInterval(timerInt);
+  seconds = 0; moves = 0; matches = 0; comboChain = 0;
+  lockBoard = true; 
+  gameActive = false;
+  
+  // Reset UI
+  timeDisplay.innerText = '00:00';
+  movesDisplay.innerText = '0';
+  accDisplay.innerText = '100%';
+  statePill.innerText = 'Peeking...';
+  statePill.style.color = '#fbbf24'; // Warning color
+  
+  // Load High Score
+  const savedBest = localStorage.getItem(`mm_best_${currentDiff}`);
+  bestScoreDisplay.innerText = savedBest ? `Best: ${formatTime(savedBest)}` : 'Best: --:--';
+
+  // Generate Grid
+  createGrid();
+
+  // Peek Mechanic
+  const peekDuration = CONFIG[currentDiff].peekTime;
+  
+  // 1. Show all cards immediately
+  const allCards = document.querySelectorAll('.card');
+  allCards.forEach(c => c.classList.add('peek'));
+
+  // 2. Timer to hide them
+  setTimeout(() => {
+    allCards.forEach(c => c.classList.remove('peek'));
+    lockBoard = false;
+    gameActive = true;
+    statePill.innerText = 'Playing';
+    statePill.style.color = '#22c55e';
+    startTimer();
+  }, peekDuration);
+}
+
+function createGrid() {
+  grid.innerHTML = '';
+  const cfg = CONFIG[currentDiff];
+  const theme = THEMES[Math.floor(Math.random() * THEMES.length)];
+  
+  // Get pairs
+  const items = theme.slice(0, cfg.pairs);
+  const deck = [...items, ...items];
+  shuffle(deck);
+
+  // Set CSS Grid
+  grid.style.gridTemplateColumns = `repeat(${cfg.cols}, auto)`;
+
+  deck.forEach(emoji => {
+    const card = document.createElement('div');
+    card.classList.add('card');
+    card.dataset.value = emoji;
+    
+    // Structure: Card Container -> Card Inner -> Front (Logo) / Back (Emoji)
+    // Note: In CSS flip logic, Front is 0deg, Back is 180deg. 
+    // We want Logo visible initially (0deg), Emoji hidden (180deg).
+    card.innerHTML = `
+      <div class="card-inner">
+        <div class="face front"><div style="font-size:20px; font-weight:900; opacity:0.5">M</div></div>
+        <div class="face back">${emoji}</div>
+      </div>
+    `;
+
+    card.addEventListener('click', () => flipCard(card));
+    grid.appendChild(card);
+  });
+}
+
+function flipCard(card) {
+  if (lockBoard) return;
+  if (card === firstCard) return;
+  if (card.classList.contains('matched')) return;
+
+  card.classList.add('flip');
+  playSound('flip');
+
+  if (!firstCard) {
+    firstCard = card;
+    return;
+  }
+
+  secondCard = card;
+  moves++;
+  movesDisplay.innerText = moves;
+  updateAcc();
+  checkForMatch();
+}
+
+function checkForMatch() {
+  lockBoard = true;
+  const isMatch = firstCard.dataset.value === secondCard.dataset.value;
+
+  if (isMatch) {
+    disableCards();
+  } else {
+    unflipCards();
+  }
+}
+
+function disableCards() {
+  matches++;
+  
+  // Combo System
+  const now = Date.now();
+  if (now - lastMatchTime < 2000) {
+    comboChain++;
+    showComboEffect(comboChain);
+  } else {
+    comboChain = 1;
+  }
+  lastMatchTime = now;
+
+  firstCard.classList.add('matched');
+  secondCard.classList.add('matched');
+  
+  playSound('match');
+  
+  // Small confetti for match
+  confetti({
+    particleCount: 30,
+    spread: 50,
+    origin: { y: 0.7 },
+    colors: ['#22c55e', '#0ea5a1'],
+    disableForReducedMotion: true
+  });
+
+  resetBoard();
+  
+  if (matches === CONFIG[currentDiff].pairs) {
+    handleWin();
+  }
+}
+
+function unflipCards() {
+  playSound('error');
+  // Add Shake
+  firstCard.classList.add('shake');
+  secondCard.classList.add('shake');
+
+  setTimeout(() => {
+    firstCard.classList.remove('flip', 'shake');
+    secondCard.classList.remove('flip', 'shake');
+    resetBoard();
+  }, 800);
+}
+
+function resetBoard() {
+  [firstCard, secondCard] = [null, null];
+  lockBoard = false;
+}
+
+function handleWin() {
+  clearInterval(timerInt);
+  playSound('win');
+  gameActive = false;
+  statePill.innerText = 'Winner!';
+
+  // High Score Logic
+  const currentBest = localStorage.getItem(`mm_best_${currentDiff}`);
+  if (!currentBest || seconds < parseInt(currentBest)) {
+    localStorage.setItem(`mm_best_${currentDiff}`, seconds);
+  }
+
+  // Big Confetti
+  const end = Date.now() + 1500;
+  (function frame() {
+    confetti({
+      particleCount: 5,
+      angle: 60,
+      spread: 55,
+      origin: { x: 0 }
+    });
+    confetti({
+      particleCount: 5,
+      angle: 120,
+      spread: 55,
+      origin: { x: 1 }
+    });
+    if (Date.now() < end) {
+      requestAnimationFrame(frame);
+    }
+  }());
+
+  // Populate Modal
+  document.getElementById('winTime').innerText = formatTime(seconds);
+  document.getElementById('winMoves').innerText = moves;
+  document.getElementById('winAcc').innerText = Math.round((matches/moves)*100) + '%';
+  
+  setTimeout(() => {
+    document.getElementById('winModal').classList.add('show');
+  }, 800);
+}
+
+// --- HELPERS ---
+
+function startTimer() {
+  timerInt = setInterval(() => {
+    seconds++;
+    timeDisplay.innerText = formatTime(seconds);
+  }, 1000);
+}
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60).toString().padStart(2, '0');
+  const s = (sec % 60).toString().padStart(2, '0');
+  return `${m}:${s}`;
+}
+
+function updateAcc() {
+  const acc = matches === 0 ? 100 : Math.round((matches / moves) * 100);
+  accDisplay.innerText = `${acc}%`;
+}
+
+function shuffle(array) {
+  for (let i = array.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [array[i], array[j]] = [array[j], array[i]];
+  }
+}
+
+function showComboEffect(count) {
+  if(count < 2) return;
+  const el = document.createElement('div');
+  el.classList.add('combo-text');
+  el.innerText = `${count}x COMBO!`;
+  comboContainer.appendChild(el);
+  setTimeout(() => el.remove(), 1000);
+}
+
+// --- EVENT LISTENERS ---
+
+document.querySelectorAll('.dif-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.dif-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentDiff = btn.dataset.d;
+    levelPill.innerText = `${btn.innerText} ${CONFIG[currentDiff].rows}x${CONFIG[currentDiff].cols}`;
+    initGame();
+  });
+});
+
+document.getElementById('newGameBtn').addEventListener('click', initGame);
+document.getElementById('playAgainBtn').addEventListener('click', () => {
+  document.getElementById('winModal').classList.remove('show');
+  initGame();
+});
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  document.body.classList.toggle('light-mode');
+});
+
+document.getElementById('muteBtn').addEventListener('click', (e) => {
+  muted = !muted;
+  e.target.innerText = muted ? '🔇 Muted' : '🔊 Sound';
+});
+
+// Init
+initGame();
+
+</script>
+</body>
+</html>
